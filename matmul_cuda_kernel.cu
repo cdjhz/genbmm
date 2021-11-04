@@ -21,7 +21,7 @@ __global__ void matmul_cuda_forward_kernel(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -55,7 +55,7 @@ __global__ void max_cuda_forward_kernel(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
   scalar_t val = 0.0;
@@ -86,7 +86,7 @@ __global__ void sample_cuda_forward_kernel(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
   scalar_t val = 0.0;
@@ -132,7 +132,7 @@ __global__ void prod_max_cuda_forward_kernel(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
   scalar_t val = 0.0;
@@ -169,7 +169,7 @@ __global__ void matmul_cuda_backward_kernel_A(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -200,7 +200,7 @@ __global__ void matmul_cuda_backward_kernel_B(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -231,7 +231,7 @@ __global__ void matmul_cuda_backbackward_kernel_A(
     const int a_size,
     const int b_size
                                                   ) {
-    const int n = blockIdx.z;
+    const int n = threadIdx.z + blockIdx.z * blockDim.z;
     const int row = threadIdx.x + blockIdx.x * blockDim.x;
     const int col = threadIdx.y + blockIdx.y * blockDim.y;
     if (row < a_size && col < in_size) {
@@ -274,7 +274,7 @@ __global__ void matmul_cuda_backbackward_kernel_B(
                                                   ) {
 
 
-    const int n = blockIdx.z;
+    const int n = threadIdx.z + blockIdx.z * blockDim.z;
 
     const int row = threadIdx.x + blockIdx.x * blockDim.x;
     const int col = threadIdx.y + blockIdx.y * blockDim.y;
@@ -315,7 +315,7 @@ __global__ void matmul_cuda_backbackward_kernel_C(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -345,7 +345,7 @@ __global__ void max_cuda_backward_kernel_A(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -377,7 +377,7 @@ __global__ void max_cuda_backward_kernel_B(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -408,7 +408,7 @@ __global__ void prod_max_cuda_backward_kernel_A(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -438,7 +438,7 @@ __global__ void prod_max_cuda_backward_kernel_B(
     const int b_size
     ) {
 
-  const int n = blockIdx.z;
+  const int n = threadIdx.z + blockIdx.z * blockDim.z;
   const int row = threadIdx.x + blockIdx.x * blockDim.x;
   const int col = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -477,11 +477,12 @@ std::vector<torch::Tensor> matmul_cuda_forward(
   auto out = torch::zeros({batch_size, a_size, b_size}, options);
 
   const int in_size = a.size(2);
-  const int threads = 32;
-  const dim3 threads_per_block(threads, threads, 1);
+  const int threads = 16;
+  const int b_threads = 4;
+  const dim3 threads_per_block(threads, threads, b_threads);
   const dim3 blocks(a_size / threads + 1,
                     b_size / threads + 1,
-                    batch_size);
+                    batch_size / b_threads + 1);
 
   // Dispatch
   if (mode == 0) {
@@ -558,27 +559,30 @@ std::vector<torch::Tensor> matmul_cuda_backbackward(
   const int a_size = a.size(1);
   const int b_size = b.size(2);
 
-  const int threads = 32;
+  const int threads = 16;
+  const int b_threads = 4;
+  const dim3 threads_per_block(threads, threads, b_threads);
   const dim3 blocks(a_size / threads + 1,
-                    in_size / threads + 1,
-                    batch_size);
-  const dim3 threads_per_block(threads, threads, 1);
+                    b_size / threads + 1,
+                    batch_size / b_threads + 1);
   auto grad_a = torch::zeros_like(a);
 
 
   auto grad_b = torch::zeros_like(b);
   /* auto grad_bp = grad_b.packed_accessor32<float,3,torch::RestrictPtrTraits>(); */
-  const int threads2 = 32;
-  const dim3 blocks2(in_size / threads2 + 1,
+  const int threads2 = 16;
+  const int b_threads2 = 4;
+  const dim3 blocks2(a_size / threads2 + 1,
                     b_size / threads2 + 1,
-                    batch_size);
+                    batch_size / b_threads2 + 1);
 
 
   auto grad_grad = torch::zeros_like(grad_out);
-  const int threads3 = 32;
+  const int threads3 = 16;
+  const int b_threads3 = 4;
   const dim3 blocks3(a_size / threads3 + 1,
-                     b_size / threads3 + 1,
-                     batch_size);
+                    b_size / threads3 + 1,
+                    batch_size / b_threads3 + 1);
 
   if (mode == 0) {
       AT_DISPATCH_FLOATING_TYPES_AND_HALF(a.type(), "matmul_backbackward_cuda", ([&] {
@@ -635,20 +639,22 @@ std::vector<torch::Tensor> matmul_cuda_backward(
   const int a_size = a.size(1);
   const int b_size = b.size(2);
 
-  const int threads = 32;
+  const int threads = 16;
+  const int b_threads = 4;
+  const dim3 threads_per_block(threads, threads, b_threads);
   const dim3 blocks(a_size / threads + 1,
-                    in_size / threads + 1,
-                    batch_size);
-  const dim3 threads_per_block(threads, threads, 1);
+                    b_size / threads + 1,
+                    batch_size / b_threads + 1);
   auto grad_a = torch::zeros_like(a);
 
 
   auto grad_b = torch::zeros_like(b);
   /* auto grad_bp = grad_b.packed_accessor32<float,3,torch::RestrictPtrTraits>(); */
-  const int threads2 = 32;
-  const dim3 blocks2(in_size / threads2 + 1,
+  const int threads2 = 16;
+  const int b_threads2 = 4;
+  const dim3 blocks2(a_size / threads2 + 1,
                     b_size / threads2 + 1,
-                    batch_size);
+                    batch_size / b_threads2 + 1);
 
   if (mode == 0) {
       AT_DISPATCH_FLOATING_TYPES_AND_HALF(a.type(), "matmul_forward_cuda", ([&] {
